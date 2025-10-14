@@ -10,24 +10,19 @@ local tweenService = game:GetService("TweenService")
 
 -------------------------------------------------------------------------------------------------------------------------------
 
--- Función para encontrar un lugar seguro para poner la GUI
-local function findSafeParent()
-    local safeParents = {
-        function() return gethui and gethui() end,
-        function() return game:GetService("CoreGui") end,
-        function() return localplayer:FindFirstChild("PlayerGui") end,
-        function() return game:FindFirstChild("Lighting") end,
-        function() return workspace end
-    }
-    
-    for _, parentFunc in ipairs(safeParents) do
-        local success, parent = pcall(parentFunc)
-        if success and parent then
-            return parent
-        end
-    end
-    return nil
-end
+-- Variables para los estados
+local infiniteJumpEnabled = false
+local noclipEnabled = false
+local espEnabled = false
+local ragdollEnabled = false
+local espHighlights = {}
+local originalParts = {}
+
+-- Arrays para manejar elementos de la UI
+local shade1 = {}
+local shade2 = {}
+local text1 = {}
+local scroll = {}
 
 -------------------------------------------------------------------------------------------------------------------------------
 
@@ -42,12 +37,6 @@ end
 
 -------------------------------------------------------------------------------------------------------------------------------
 
--- Variables para los estados
-local infiniteJumpEnabled = false
-local noclipEnabled = false
-local espEnabled = false
-local espHighlights = {}
-
 -- Función para Infinite Jump
 local function toggleInfiniteJump()
     infiniteJumpEnabled = not infiniteJumpEnabled
@@ -59,7 +48,6 @@ local function toggleInfiniteJump()
                 localplayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
             end
         end)
-        -- Guardar la conexión para poder desconectarla después
         getgenv().infiniteJumpConnection = connection
     else
         if getgenv().infiniteJumpConnection then
@@ -90,7 +78,6 @@ local function toggleNoclip()
             getgenv().noclipConnection:Disconnect()
             getgenv().noclipConnection = nil
         end
-        -- Restaurar collision
         if localplayer.Character then
             for _, part in pairs(localplayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -106,11 +93,10 @@ local function toggleESP()
     espEnabled = not espEnabled
     
     if espEnabled then
-        -- Crear ESP para todos los jugadores
         for _, player in pairs(players:GetPlayers()) do
             if player ~= localplayer and player.Character then
                 coroutine.wrap(function()
-                    wait(0.5) -- Pequeño delay
+                    wait(0.5)
                     if player.Character and espEnabled then
                         local highlight = Instance.new("Highlight")
                         highlight.Name = "ESP_" .. player.Name
@@ -124,7 +110,6 @@ local function toggleESP()
                     end
                 end)()
                 
-                -- Conectar para cuando el personaje cambie
                 player.CharacterAdded:Connect(function(newChar)
                     wait(1)
                     if espEnabled and player ~= localplayer then
@@ -142,7 +127,6 @@ local function toggleESP()
             end
         end
         
-        -- Conectar para nuevos jugadores
         local function addESPToNewPlayer(player)
             if player ~= localplayer then
                 player.CharacterAdded:Connect(function(char)
@@ -165,7 +149,6 @@ local function toggleESP()
         players.PlayerAdded:Connect(addESPToNewPlayer)
         
     else
-        -- Remover todos los ESP
         for player, highlight in pairs(espHighlights) do
             if highlight and highlight.Parent then
                 highlight:Destroy()
@@ -175,203 +158,292 @@ local function toggleESP()
     end
 end
 
+-- Función para Ragdoll/Despiece
+local function toggleRagdoll()
+    ragdollEnabled = not ragdollEnabled
+    
+    if ragdollEnabled then
+        if localplayer.Character then
+            local character = localplayer.Character
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            
+            if humanoid then
+                originalParts = {
+                    walkSpeed = humanoid.WalkSpeed,
+                    jumpPower = humanoid.JumpPower,
+                    autoRotate = humanoid.AutoRotate
+                }
+                
+                humanoid.WalkSpeed = 0
+                humanoid.JumpPower = 0
+                humanoid.AutoRotate = false
+                
+                wait(0.1)
+                
+                for _, obj in pairs(character:GetDescendants()) do
+                    if obj:IsA("Motor6D") or obj:IsA("Weld") or obj:IsA("WeldConstraint") then
+                        obj:Destroy()
+                    end
+                end
+                
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Massless = false
+                        part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
+                        
+                        local bodyVelocity = Instance.new("BodyVelocity")
+                        bodyVelocity.Velocity = Vector3.new(0, -50, 0)
+                        bodyVelocity.MaxForce = Vector3.new(0, 100000, 0)
+                        bodyVelocity.Parent = part
+                        
+                        local randomForce = Instance.new("BodyForce")
+                        randomForce.Force = Vector3.new(
+                            math.random(-1000, 1000),
+                            math.random(500, 2000), 
+                            math.random(-1000, 1000)
+                        )
+                        randomForce.Parent = part
+                        
+                        part.CanCollide = false
+                        
+                        game:GetService("Debris"):AddItem(bodyVelocity, 2)
+                        game:GetService("Debris"):AddItem(randomForce, 1)
+                    end
+                end
+                
+                wait(3)
+                if humanoid and humanoid.Parent then
+                    humanoid.WalkSpeed = originalParts.walkSpeed
+                    humanoid.JumpPower = originalParts.jumpPower
+                    humanoid.AutoRotate = originalParts.autoRotate
+                end
+            end
+        end
+    else
+        if localplayer.Character then
+            localplayer.Character:BreakJoints()
+        end
+    end
+end
+
 -------------------------------------------------------------------------------------------------------------------------------
 
--- Crear la GUI con múltiples métodos
+-- Crear la GUI con el estilo de referencia
 local function createGUI()
-    local safeParent = findSafeParent()
-    if not safeParent then
-        warn("No se pudo encontrar un parent seguro para la GUI")
-        return nil
-    end
-
     local gui = Instance.new("ScreenGui")
-    gui["Name"] = "CheatsMenu_" .. tostring(math.random(10000, 99999))
-    gui["ResetOnSpawn"] = false
-    gui["IgnoreGuiInset"] = true
-    gui["ZIndexBehavior"] = Enum.ZIndexBehavior.Sibling
+    gui.Name = "CheatsMenu"
     
     -- Intentar diferentes métodos de parent
-    local success, result = pcall(function()
-        gui.Parent = safeParent
+    local success = pcall(function()
+        if gethui then
+            gui.Parent = gethui()
+        else
+            gui.Parent = game:GetService("CoreGui")
+        end
     end)
     
     if not success then
-        -- Método alternativo: usar syn.protect_gui si está disponible
-        if syn and syn.protect_gui then
-            syn.protect_gui(gui)
-            gui.Parent = safeParent
-        else
-            warn("No se pudo crear la GUI")
-            gui:Destroy()
-            return nil
-        end
+        gui.Parent = localplayer:WaitForChild("PlayerGui")
     end
 
-    return gui
-end
-
--- Crear la interfaz principal
-local gui = createGUI()
-if not gui then
-    -- Último intento: crear en PlayerGui después de esperar
-    wait(2)
-    gui = Instance.new("ScreenGui")
-    gui.Name = "PlayerCheats"
     gui.ResetOnSpawn = false
-    gui.Parent = localplayer:WaitForChild("PlayerGui")
-end
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-local mainFrame = Instance.new("Frame")
-mainFrame["Size"] = UDim2.new(0, 200, 0, 150)
-mainFrame["Position"] = UDim2.new(0, 10, 0, 10)
-mainFrame["BackgroundColor3"] = Color3.fromRGB(30, 30, 30)
-mainFrame["BackgroundTransparency"] = 0.1
-mainFrame["BorderSizePixel"] = 1
-mainFrame["BorderColor3"] = Color3.fromRGB(80, 80, 80)
-mainFrame["Parent"] = gui
+    -- Main Holder
+    local Holder = Instance.new("Frame")
+    Holder.Name = "Holder"
+    Holder.Parent = gui
+    Holder.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    Holder.BorderSizePixel = 0
+    Holder.Position = UDim2.new(0, 10, 0, 10)
+    Holder.Size = UDim2.new(0, 250, 0, 200)
+    Holder.ZIndex = 10
+    table.insert(shade1, Holder)
 
--- Añadir sombra para mejor visibilidad
-local shadow = Instance.new("UIStroke")
-shadow.Color = Color3.fromRGB(0, 0, 0)
-shadow.Thickness = 2
-shadow.Transparency = 0.7
-shadow.Parent = mainFrame
+    -- Title Bar
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Parent = Holder
+    Title.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+    Title.BorderSizePixel = 0
+    Title.Size = UDim2.new(1, 0, 0, 25)
+    Title.Font = Enum.Font.SourceSans
+    Title.Text = "Cheats Menu"
+    Title.TextColor3 = Color3.new(1, 1, 1)
+    Title.TextSize = 16
+    Title.ZIndex = 10
+    table.insert(shade2, Title)
+    table.insert(text1, Title)
 
--- Hacer la ventana arrastrable
-task.spawn(function()
-    local dragToggle = nil
-    local dragSpeed = 0.25
-    local dragStart = nil
-    local startPos = nil
+    -- Close Button
+    local CloseButton = Instance.new("ImageButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Parent = Holder
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.Position = UDim2.new(1, -20, 0, 2)
+    CloseButton.Size = UDim2.new(0, 16, 0, 16)
+    CloseButton.Image = "rbxassetid://3523243755"
+    CloseButton.ZIndex = 10
 
-    local function updateInput(input)
-        local delta = input.Position - dragStart
-        local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        mainFrame.Position = position
+    -- Settings Button (minimize/maximize)
+    local SettingsButton = Instance.new("ImageButton")
+    SettingsButton.Name = "SettingsButton"
+    SettingsButton.Parent = Holder
+    SettingsButton.BackgroundTransparency = 1
+    SettingsButton.Position = UDim2.new(1, -40, 0, 2)
+    SettingsButton.Size = UDim2.new(0, 16, 0, 16)
+    SettingsButton.Image = "rbxassetid://1204397029"
+    SettingsButton.ZIndex = 10
+
+    -- Main Content Frame
+    local Settings = Instance.new("Frame")
+    Settings.Name = "Settings"
+    Settings.Parent = Holder
+    Settings.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    Settings.BorderSizePixel = 0
+    Settings.Position = UDim2.new(0, 0, 0, 25)
+    Settings.Size = UDim2.new(1, 0, 1, -25)
+    Settings.ZIndex = 10
+    table.insert(shade1, Settings)
+
+    -- Scrolling Frame for buttons
+    local SettingsHolder = Instance.new("ScrollingFrame")
+    SettingsHolder.Name = "SettingsHolder"
+    SettingsHolder.Parent = Settings
+    SettingsHolder.BackgroundTransparency = 1
+    SettingsHolder.BorderSizePixel = 0
+    SettingsHolder.Size = UDim2.new(1, 0, 1, 0)
+    SettingsHolder.ScrollBarImageColor3 = Color3.fromRGB(78, 78, 79)
+    SettingsHolder.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    SettingsHolder.CanvasSize = UDim2.new(0, 0, 0, 180)
+    SettingsHolder.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    SettingsHolder.ScrollBarThickness = 8
+    SettingsHolder.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    SettingsHolder.VerticalScrollBarInset = 'Always'
+    SettingsHolder.ZIndex = 10
+    table.insert(scroll, SettingsHolder)
+
+    -- Función para crear botones en el estilo de referencia
+    local function createCheatButton(name, text, position)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Parent = SettingsHolder
+        button.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+        button.BorderSizePixel = 0
+        button.Position = position
+        button.Size = UDim2.new(1, -10, 0, 30)
+        button.Font = Enum.Font.SourceSans
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.TextSize = 14
+        button.ZIndex = 10
+        table.insert(shade2, button)
+        table.insert(text1, button)
+        
+        return button
     end
 
-    mainFrame.InputBegan:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then 
-            dragToggle = true
+    -- Crear los 4 botones de cheats
+    local infiniteJumpButton = createCheatButton("InfiniteJump", "Infinite Jump: OFF", UDim2.new(0, 5, 0, 5))
+    local noclipButton = createCheatButton("Noclip", "Noclip: OFF", UDim2.new(0, 5, 0, 40))
+    local espButton = createCheatButton("ESP", "ESP: OFF", UDim2.new(0, 5, 0, 75))
+    local ragdollButton = createCheatButton("Ragdoll", "Ragdoll: ACTIVAR", UDim2.new(0, 5, 0, 110))
+
+    -- Conectar funcionalidades
+    infiniteJumpButton.MouseButton1Click:Connect(function()
+        clik()
+        toggleInfiniteJump()
+        infiniteJumpButton.Text = "Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
+        infiniteJumpButton.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
+    end)
+
+    noclipButton.MouseButton1Click:Connect(function()
+        clik()
+        toggleNoclip()
+        noclipButton.Text = "Noclip: " .. (noclipEnabled and "ON" or "OFF")
+        noclipButton.BackgroundColor3 = noclipEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
+    end)
+
+    espButton.MouseButton1Click:Connect(function()
+        clik()
+        toggleESP()
+        espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+        espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
+    end)
+
+    ragdollButton.MouseButton1Click:Connect(function()
+        clik()
+        toggleRagdoll()
+        ragdollButton.Text = ragdollEnabled and "Ragdoll: DESACTIVAR" or "Ragdoll: ACTIVAR"
+        ragdollButton.BackgroundColor3 = ragdollEnabled and Color3.fromRGB(120, 60, 60) or Color3.fromRGB(46, 46, 47)
+    end)
+
+    -- Funcionalidad de cerrar
+    CloseButton.MouseButton1Click:Connect(function()
+        clik()
+        gui:Destroy()
+    end)
+
+    -- Funcionalidad de minimizar
+    local isMinimized = false
+    SettingsButton.MouseButton1Click:Connect(function()
+        clik()
+        isMinimized = not isMinimized
+        if isMinimized then
+            Holder.Size = UDim2.new(0, 250, 0, 25)
+            Settings.Visible = false
+        else
+            Holder.Size = UDim2.new(0, 250, 0, 200)
+            Settings.Visible = true
+        end
+    end)
+
+    -- Hacer la ventana arrastrable
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    Holder.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
             dragStart = input.Position
-            startPos = mainFrame.Position
+            startPos = Holder.Position
+            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
-                    dragToggle = false
+                    dragging = false
                 end
             end)
         end
     end)
 
-    uis.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            if dragToggle then
-                updateInput(input)
-            end
+    Holder.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
         end
     end)
-end)
 
--- Barra de título
-local titleBar = Instance.new("Frame")
-titleBar["Size"] = UDim2.new(1, 0, 0, 25)
-titleBar["BackgroundColor3"] = Color3.fromRGB(50, 50, 50)
-titleBar["BorderSizePixel"] = 0
-titleBar["Parent"] = mainFrame
+    uis.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            Holder.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel["Size"] = UDim2.new(1, -10, 1, 0)
-titleLabel["Position"] = UDim2.new(0, 5, 0, 0)
-titleLabel["BackgroundTransparency"] = 1
-titleLabel["Text"] = "Cheats Menu"
-titleLabel["TextColor3"] = Color3.new(1, 1, 1)
-titleLabel["TextSize"] = 14
-titleLabel["Font"] = Enum.Font.RobotoMono
-titleLabel["TextXAlignment"] = Enum.TextXAlignment.Left
-titleLabel["Parent"] = titleBar
-
--- Botón de cerrar
-local closeButton = Instance.new("TextButton")
-closeButton["Size"] = UDim2.new(0, 20, 0, 20)
-closeButton["Position"] = UDim2.new(1, -25, 0, 2)
-closeButton["BackgroundColor3"] = Color3.fromRGB(200, 50, 50)
-closeButton["Text"] = "X"
-closeButton["TextColor3"] = Color3.new(1, 1, 1)
-closeButton["TextSize"] = 12
-closeButton["Font"] = Enum.Font.RobotoMono
-closeButton["BorderSizePixel"] = 0
-closeButton["Parent"] = titleBar
-
-closeButton.MouseButton1Click:Connect(function()
-    clik()
-    gui:Destroy()
-end)
-
--- Función para crear botones
-local function createButton(name, position, text)
-    local button = Instance.new("TextButton")
-    button["Name"] = name
-    button["Size"] = UDim2.new(0.9, 0, 0, 30)
-    button["Position"] = position
-    button["AnchorPoint"] = Vector2.new(0.5, 0)
-    button["BackgroundColor3"] = Color3.fromRGB(60, 60, 60)
-    button["Text"] = text
-    button["TextColor3"] = Color3.new(1, 1, 1)
-    button["TextSize"] = 12
-    button["Font"] = Enum.Font.RobotoMono
-    button["BorderSizePixel"] = 0
-    button["Parent"] = mainFrame
-    
-    local buttonShadow = Instance.new("UIStroke")
-    buttonShadow.Color = Color3.fromRGB(0, 0, 0)
-    buttonShadow.Thickness = 1
-    buttonShadow.Transparency = 0.5
-    buttonShadow.Parent = button
-    
-    return button
+    return gui
 end
-
--- Crear los 3 botones
-local infiniteJumpButton = createButton("InfiniteJumpButton", UDim2.new(0.5, 0, 0, 30), "Infinite Jump: OFF")
-local noclipButton = createButton("NoclipButton", UDim2.new(0.5, 0, 0, 70), "Noclip: OFF")
-local espButton = createButton("ESPButton", UDim2.new(0.5, 0, 0, 110), "ESP: OFF")
-
--- Conectar los botones a sus funciones
-infiniteJumpButton.MouseButton1Click:Connect(function()
-    clik()
-    toggleInfiniteJump()
-    infiniteJumpButton.Text = "Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
-    infiniteJumpButton.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(60, 60, 60)
-end)
-
-noclipButton.MouseButton1Click:Connect(function()
-    clik()
-    toggleNoclip()
-    noclipButton.Text = "Noclip: " .. (noclipEnabled and "ON" or "OFF")
-    noclipButton.BackgroundColor3 = noclipEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(60, 60, 60)
-end)
-
-espButton.MouseButton1Click:Connect(function()
-    clik()
-    toggleESP()
-    espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
-    espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(60, 60, 60)
-end)
 
 -------------------------------------------------------------------------------------------------------------------------------
 
--- Notificación de carga
-local function showNotification()
-    print("=== Cheats Menu Cargado ===")
-    print("• Infinite Jump: Click para activar/desactivar")
-    print("• Noclip: Atravesar paredes")
-    print("• ESP: Ver jugadores a través de paredes")
-    print("============================")
-end
+-- Crear la GUI
+local gui = createGUI()
 
-showNotification()
+-- Notificación de carga
+print("=== Cheats Menu Cargado ===")
+print("• Infinite Jump: Click para activar/desactivar")
+print("• Noclip: Atravesar paredes") 
+print("• ESP: Ver jugadores a través de paredes")
+print("• Ragdoll: Despiece del personaje")
+print("============================")
 
 -- Limpiar conexiones cuando el script se destruya
 gui.Destroying:Connect(function()
@@ -381,7 +453,6 @@ gui.Destroying:Connect(function()
     if getgenv().noclipConnection then
         getgenv().noclipConnection:Disconnect()
     end
-    -- Apagar ESP
     if espEnabled then
         espEnabled = false
         for player, highlight in pairs(espHighlights) do
