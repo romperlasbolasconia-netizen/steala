@@ -6,7 +6,17 @@ local players = game:GetService("Players")
 local localplayer = players["LocalPlayer"]
 local runservice = game:GetService("RunService")
 local uis = game:GetService("UserInputService")
-local tweenService = game:GetService("TweenService")
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+local function clik()
+	local s = Instance.new("Sound") 
+	s["SoundId"] = "rbxassetid://87152549167464"
+	s["Parent"] = game["Workspace"]
+	s["Volume"] = 1.2
+	s["TimePosition"] = 0.1
+	s:Play()
+end
 
 -------------------------------------------------------------------------------------------------------------------------------
 
@@ -15,451 +25,374 @@ local infiniteJumpEnabled = false
 local noclipEnabled = false
 local espEnabled = false
 local ragdollEnabled = false
-local espHighlights = {}
-local originalParts = {}
-
--- Arrays para manejar elementos de la UI
-local shade1 = {}
-local shade2 = {}
-local text1 = {}
-local scroll = {}
-
--------------------------------------------------------------------------------------------------------------------------------
-
-local function clik()
-    local s = Instance.new("Sound") 
-    s["SoundId"] = "rbxassetid://87152549167464"
-    s["Parent"] = game["Workspace"]
-    s["Volume"] = 1.2
-    s["TimePosition"] = 0.1
-    s:Play()
-end
-
--------------------------------------------------------------------------------------------------------------------------------
 
 -- Función para Infinite Jump
 local function toggleInfiniteJump()
-    infiniteJumpEnabled = not infiniteJumpEnabled
-    
-    if infiniteJumpEnabled then
-        local connection
-        connection = uis.JumpRequest:Connect(function()
-            if localplayer.Character and localplayer.Character:FindFirstChildOfClass("Humanoid") then
-                localplayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
-            end
-        end)
-        getgenv().infiniteJumpConnection = connection
-    else
-        if getgenv().infiniteJumpConnection then
-            getgenv().infiniteJumpConnection:Disconnect()
-            getgenv().infiniteJumpConnection = nil
-        end
-    end
+	infiniteJumpEnabled = not infiniteJumpEnabled
+	
+	if infiniteJumpEnabled then
+		local connection
+		connection = uis.JumpRequest:Connect(function()
+			if localplayer.Character and localplayer.Character:FindFirstChildOfClass("Humanoid") then
+				localplayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+			end
+		end)
+		-- Guardar la conexión para poder desconectarla después
+		getgenv().infiniteJumpConnection = connection
+	else
+		if getgenv().infiniteJumpConnection then
+			getgenv().infiniteJumpConnection:Disconnect()
+			getgenv().infiniteJumpConnection = nil
+		end
+	end
 end
 
 -- Función para Noclip
 local function toggleNoclip()
-    noclipEnabled = not noclipEnabled
-    
-    if noclipEnabled then
-        local noclipConnection
-        noclipConnection = runservice.Stepped:Connect(function()
-            if localplayer.Character then
-                for _, part in pairs(localplayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-        getgenv().noclipConnection = noclipConnection
-    else
-        if getgenv().noclipConnection then
-            getgenv().noclipConnection:Disconnect()
-            getgenv().noclipConnection = nil
-        end
-        if localplayer.Character then
-            for _, part in pairs(localplayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
-            end
-        end
-    end
+	noclipEnabled = not noclipEnabled
+	
+	if noclipEnabled then
+		local noclipConnection
+		noclipConnection = runservice.Stepped:Connect(function()
+			if localplayer.Character then
+				for _, part in pairs(localplayer.Character:GetDescendants()) do
+					if part:IsA("BasePart") and part.CanCollide then
+						part.CanCollide = false
+					end
+				end
+			end
+		end)
+		getgenv().noclipConnection = noclipConnection
+	else
+		if getgenv().noclipConnection then
+			getgenv().noclipConnection:Disconnect()
+			getgenv().noclipConnection = nil
+		end
+		-- Restaurar collision
+		if localplayer.Character then
+			for _, part in pairs(localplayer.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = true
+				end
+			end
+		end
+	end
 end
 
 -- Función para ESP
 local function toggleESP()
-    espEnabled = not espEnabled
-    
-    if espEnabled then
-        for _, player in pairs(players:GetPlayers()) do
-            if player ~= localplayer and player.Character then
-                coroutine.wrap(function()
-                    wait(0.5)
-                    if player.Character and espEnabled then
-                        local highlight = Instance.new("Highlight")
-                        highlight.Name = "ESP_" .. player.Name
-                        highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        highlight.FillTransparency = 0.7
-                        highlight.OutlineTransparency = 0
-                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        highlight.Parent = player.Character
-                        espHighlights[player] = highlight
-                    end
-                end)()
-                
-                player.CharacterAdded:Connect(function(newChar)
-                    wait(1)
-                    if espEnabled and player ~= localplayer then
-                        local newHighlight = Instance.new("Highlight")
-                        newHighlight.Name = "ESP_" .. player.Name
-                        newHighlight.FillColor = Color3.fromRGB(255, 0, 0)
-                        newHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        newHighlight.FillTransparency = 0.7
-                        newHighlight.OutlineTransparency = 0
-                        newHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        newHighlight.Parent = newChar
-                        espHighlights[player] = newHighlight
-                    end
-                end)
-            end
-        end
-        
-        local function addESPToNewPlayer(player)
-            if player ~= localplayer then
-                player.CharacterAdded:Connect(function(char)
-                    wait(1)
-                    if espEnabled then
-                        local highlight = Instance.new("Highlight")
-                        highlight.Name = "ESP_" .. player.Name
-                        highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        highlight.FillTransparency = 0.7
-                        highlight.OutlineTransparency = 0
-                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        highlight.Parent = char
-                        espHighlights[player] = highlight
-                    end
-                end)
-            end
-        end
-        
-        players.PlayerAdded:Connect(addESPToNewPlayer)
-        
-    else
-        for player, highlight in pairs(espHighlights) do
-            if highlight and highlight.Parent then
-                highlight:Destroy()
-            end
-        end
-        espHighlights = {}
-    end
+	espEnabled = not espEnabled
+	
+	if espEnabled then
+		-- Crear ESP para todos los jugadores
+		for _, player in pairs(players:GetPlayers()) do
+			if player ~= localplayer and player.Character then
+				local highlight = Instance.new("Highlight")
+				highlight.Name = "ESP_" .. player.Name
+				highlight.FillColor = Color3.fromRGB(255, 0, 0)
+				highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+				highlight.FillTransparency = 0.5
+				highlight.OutlineTransparency = 0
+				highlight.Parent = player.Character
+				
+				-- Conectar para cuando el personaje cambie
+				player.CharacterAdded:Connect(function(newChar)
+					wait(1) -- Esperar a que el personaje cargue
+					local newHighlight = Instance.new("Highlight")
+					newHighlight.Name = "ESP_" .. player.Name
+					newHighlight.FillColor = Color3.fromRGB(255, 0, 0)
+					newHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+					newHighlight.FillTransparency = 0.5
+					newHighlight.OutlineTransparency = 0
+					newHighlight.Parent = newChar
+				end)
+			end
+		end
+		
+		-- Conectar para nuevos jugadores
+		local function addESPToNewPlayer(player)
+			if player ~= localplayer then
+				player.CharacterAdded:Connect(function(char)
+					wait(1)
+					if espEnabled then
+						local highlight = Instance.new("Highlight")
+						highlight.Name = "ESP_" .. player.Name
+						highlight.FillColor = Color3.fromRGB(255, 0, 0)
+						highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+						highlight.FillTransparency = 0.5
+						highlight.OutlineTransparency = 0
+						highlight.Parent = char
+					end
+				end)
+			end
+		end
+		
+		players.PlayerAdded:Connect(addESPToNewPlayer)
+		
+	else
+		-- Remover todos los ESP
+		for _, player in pairs(players:GetPlayers()) do
+			if player ~= localplayer and player.Character then
+				local esp = player.Character:FindFirstChild("ESP_" .. player.Name)
+				if esp then
+					esp:Destroy()
+				end
+			end
+		end
+	end
 end
 
--- Función para Ragdoll/Despiece
+-- Función para Ragdoll/Despiece (VERSIÓN MEJORADA - NO MATA)
 local function toggleRagdoll()
-    ragdollEnabled = not ragdollEnabled
-    
-    if ragdollEnabled then
-        if localplayer.Character then
-            local character = localplayer.Character
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            
-            if humanoid then
-                originalParts = {
-                    walkSpeed = humanoid.WalkSpeed,
-                    jumpPower = humanoid.JumpPower,
-                    autoRotate = humanoid.AutoRotate
-                }
-                
-                humanoid.WalkSpeed = 0
-                humanoid.JumpPower = 0
-                humanoid.AutoRotate = false
-                
-                wait(0.1)
-                
-                for _, obj in pairs(character:GetDescendants()) do
-                    if obj:IsA("Motor6D") or obj:IsA("Weld") or obj:IsA("WeldConstraint") then
-                        obj:Destroy()
-                    end
-                end
-                
-                for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.Massless = false
-                        part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
-                        
-                        local bodyVelocity = Instance.new("BodyVelocity")
-                        bodyVelocity.Velocity = Vector3.new(0, -50, 0)
-                        bodyVelocity.MaxForce = Vector3.new(0, 100000, 0)
-                        bodyVelocity.Parent = part
-                        
-                        local randomForce = Instance.new("BodyForce")
-                        randomForce.Force = Vector3.new(
-                            math.random(-1000, 1000),
-                            math.random(500, 2000), 
-                            math.random(-1000, 1000)
-                        )
-                        randomForce.Parent = part
-                        
-                        part.CanCollide = false
-                        
-                        game:GetService("Debris"):AddItem(bodyVelocity, 2)
-                        game:GetService("Debris"):AddItem(randomForce, 1)
-                    end
-                end
-                
-                wait(3)
-                if humanoid and humanoid.Parent then
-                    humanoid.WalkSpeed = originalParts.walkSpeed
-                    humanoid.JumpPower = originalParts.jumpPower
-                    humanoid.AutoRotate = originalParts.autoRotate
-                end
-            end
-        end
-    else
-        if localplayer.Character then
-            localplayer.Character:BreakJoints()
-        end
-    end
-end
-
--------------------------------------------------------------------------------------------------------------------------------
-
--- Crear la GUI con el estilo de referencia
-local function createGUI()
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "CheatsMenu"
-    
-    -- Intentar diferentes métodos de parent
-    local success = pcall(function()
-        if gethui then
-            gui.Parent = gethui()
-        else
-            gui.Parent = game:GetService("CoreGui")
-        end
-    end)
-    
-    if not success then
-        gui.Parent = localplayer:WaitForChild("PlayerGui")
-    end
-
-    gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    -- Main Holder
-    local Holder = Instance.new("Frame")
-    Holder.Name = "Holder"
-    Holder.Parent = gui
-    Holder.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
-    Holder.BorderSizePixel = 0
-    Holder.Position = UDim2.new(0, 10, 0, 10)
-    Holder.Size = UDim2.new(0, 250, 0, 200)
-    Holder.ZIndex = 10
-    table.insert(shade1, Holder)
-
-    -- Title Bar
-    local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Parent = Holder
-    Title.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
-    Title.BorderSizePixel = 0
-    Title.Size = UDim2.new(1, 0, 0, 25)
-    Title.Font = Enum.Font.SourceSans
-    Title.Text = "Cheats Menu"
-    Title.TextColor3 = Color3.new(1, 1, 1)
-    Title.TextSize = 16
-    Title.ZIndex = 10
-    table.insert(shade2, Title)
-    table.insert(text1, Title)
-
-    -- Close Button
-    local CloseButton = Instance.new("ImageButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Parent = Holder
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseButton.Size = UDim2.new(0, 16, 0, 16)
-    CloseButton.Image = "rbxassetid://3523243755"
-    CloseButton.ZIndex = 10
-
-    -- Settings Button (minimize/maximize)
-    local SettingsButton = Instance.new("ImageButton")
-    SettingsButton.Name = "SettingsButton"
-    SettingsButton.Parent = Holder
-    SettingsButton.BackgroundTransparency = 1
-    SettingsButton.Position = UDim2.new(1, -40, 0, 2)
-    SettingsButton.Size = UDim2.new(0, 16, 0, 16)
-    SettingsButton.Image = "rbxassetid://1204397029"
-    SettingsButton.ZIndex = 10
-
-    -- Main Content Frame
-    local Settings = Instance.new("Frame")
-    Settings.Name = "Settings"
-    Settings.Parent = Holder
-    Settings.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
-    Settings.BorderSizePixel = 0
-    Settings.Position = UDim2.new(0, 0, 0, 25)
-    Settings.Size = UDim2.new(1, 0, 1, -25)
-    Settings.ZIndex = 10
-    table.insert(shade1, Settings)
-
-    -- Scrolling Frame for buttons
-    local SettingsHolder = Instance.new("ScrollingFrame")
-    SettingsHolder.Name = "SettingsHolder"
-    SettingsHolder.Parent = Settings
-    SettingsHolder.BackgroundTransparency = 1
-    SettingsHolder.BorderSizePixel = 0
-    SettingsHolder.Size = UDim2.new(1, 0, 1, 0)
-    SettingsHolder.ScrollBarImageColor3 = Color3.fromRGB(78, 78, 79)
-    SettingsHolder.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-    SettingsHolder.CanvasSize = UDim2.new(0, 0, 0, 180)
-    SettingsHolder.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-    SettingsHolder.ScrollBarThickness = 8
-    SettingsHolder.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-    SettingsHolder.VerticalScrollBarInset = 'Always'
-    SettingsHolder.ZIndex = 10
-    table.insert(scroll, SettingsHolder)
-
-    -- Función para crear botones en el estilo de referencia
-    local function createCheatButton(name, text, position)
-        local button = Instance.new("TextButton")
-        button.Name = name
-        button.Parent = SettingsHolder
-        button.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
-        button.BorderSizePixel = 0
-        button.Position = position
-        button.Size = UDim2.new(1, -10, 0, 30)
-        button.Font = Enum.Font.SourceSans
-        button.Text = text
-        button.TextColor3 = Color3.new(1, 1, 1)
-        button.TextSize = 14
-        button.ZIndex = 10
-        table.insert(shade2, button)
-        table.insert(text1, button)
-        
-        return button
-    end
-
-    -- Crear los 4 botones de cheats
-    local infiniteJumpButton = createCheatButton("InfiniteJump", "Infinite Jump: OFF", UDim2.new(0, 5, 0, 5))
-    local noclipButton = createCheatButton("Noclip", "Noclip: OFF", UDim2.new(0, 5, 0, 40))
-    local espButton = createCheatButton("ESP", "ESP: OFF", UDim2.new(0, 5, 0, 75))
-    local ragdollButton = createCheatButton("Ragdoll", "Ragdoll: ACTIVAR", UDim2.new(0, 5, 0, 110))
-
-    -- Conectar funcionalidades
-    infiniteJumpButton.MouseButton1Click:Connect(function()
-        clik()
-        toggleInfiniteJump()
-        infiniteJumpButton.Text = "Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
-        infiniteJumpButton.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
-    end)
-
-    noclipButton.MouseButton1Click:Connect(function()
-        clik()
-        toggleNoclip()
-        noclipButton.Text = "Noclip: " .. (noclipEnabled and "ON" or "OFF")
-        noclipButton.BackgroundColor3 = noclipEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
-    end)
-
-    espButton.MouseButton1Click:Connect(function()
-        clik()
-        toggleESP()
-        espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
-        espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(46, 46, 47)
-    end)
-
-    ragdollButton.MouseButton1Click:Connect(function()
-        clik()
-        toggleRagdoll()
-        ragdollButton.Text = ragdollEnabled and "Ragdoll: DESACTIVAR" or "Ragdoll: ACTIVAR"
-        ragdollButton.BackgroundColor3 = ragdollEnabled and Color3.fromRGB(120, 60, 60) or Color3.fromRGB(46, 46, 47)
-    end)
-
-    -- Funcionalidad de cerrar
-    CloseButton.MouseButton1Click:Connect(function()
-        clik()
-        gui:Destroy()
-    end)
-
-    -- Funcionalidad de minimizar
-    local isMinimized = false
-    SettingsButton.MouseButton1Click:Connect(function()
-        clik()
-        isMinimized = not isMinimized
-        if isMinimized then
-            Holder.Size = UDim2.new(0, 250, 0, 25)
-            Settings.Visible = false
-        else
-            Holder.Size = UDim2.new(0, 250, 0, 200)
-            Settings.Visible = true
-        end
-    end)
-
-    -- Hacer la ventana arrastrable
-    local dragging = false
-    local dragInput, dragStart, startPos
-
-    Holder.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = Holder.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    Holder.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-
-    uis.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            Holder.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-
-    return gui
+	if localplayer.Character then
+		local character = localplayer.Character
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		
+		if humanoid then
+			-- Guardar estado original
+			local originalWalkSpeed = humanoid.WalkSpeed
+			local originalJumpPower = humanoid.JumpPower
+			local originalAutoRotate = humanoid.AutoRotate
+			
+			-- IMPORTANTE: Desactivar la detección de muerte temporalmente
+			humanoid.BreakJointsOnDeath = false
+			
+			-- Desactivar movimientos pero mantener vivo el humanoid
+			humanoid.WalkSpeed = 0
+			humanoid.JumpPower = 0
+			humanoid.AutoRotate = false
+			
+			-- Esperar un momento
+			wait(0.1)
+			
+			-- En lugar de destruir las uniones, las desconectamos temporalmente
+			local savedJoints = {}
+			
+			for _, obj in pairs(character:GetDescendants()) do
+				if obj:IsA("Motor6D") then
+					-- Guardar la información de la unión
+					table.insert(savedJoints, {
+						joint = obj,
+						part0 = obj.Part0,
+						part1 = obj.Part1,
+						transform = obj.Transform
+					})
+					
+					-- Desconectar las partes pero no destruir la unión
+					obj.Part0 = nil
+					obj.Part1 = nil
+					
+				elseif obj:IsA("Weld") or obj:IsA("WeldConstraint") then
+					-- Para welds simples, solo desactivarlos temporalmente
+					obj.Enabled = false
+				end
+			end
+			
+			-- Aplicar fuerzas físicas para el efecto de caída
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+					-- Hacer las partes físicas
+					part.Massless = false
+					part.CanCollide = true
+					
+					-- Añadir fuerza hacia abajo suave
+					local bodyVelocity = Instance.new("BodyVelocity")
+					bodyVelocity.Velocity = Vector3.new(0, -30, 0) -- Menos fuerza para no atravesar todo
+					bodyVelocity.MaxForce = Vector3.new(0, 50000, 0)
+					bodyVelocity.Parent = part
+					
+					-- Añadir pequeña fuerza aleatoria para separación
+					local randomForce = Instance.new("BodyForce")
+					randomForce.Force = Vector3.new(
+						math.random(-500, 500),
+						math.random(200, 800), 
+						math.random(-500, 500)
+					)
+					randomForce.Parent = part
+					
+					-- Destruir las fuerzas después de un tiempo
+					game:GetService("Debris"):AddItem(bodyVelocity, 2)
+					game:GetService("Debris"):AddItem(randomForce, 1.5)
+				end
+			end
+			
+			-- Esperar un tiempo para el efecto ragdoll
+			wait(3)
+			
+			-- Reconstruir el personaje
+			if humanoid and humanoid.Parent and humanoid.Health > 0 then
+				-- Reactivar las uniones
+				for _, savedJoint in pairs(savedJoints) do
+					if savedJoint.joint and savedJoint.joint.Parent then
+						savedJoint.joint.Part0 = savedJoint.part0
+						savedJoint.joint.Part1 = savedJoint.part1
+					end
+				end
+				
+				-- Reactivar welds
+				for _, obj in pairs(character:GetDescendants()) do
+					if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
+						obj.Enabled = true
+					end
+				end
+				
+				-- Restaurar propiedades del humanoid
+				humanoid.WalkSpeed = originalWalkSpeed
+				humanoid.JumpPower = originalJumpPower
+				humanoid.AutoRotate = originalAutoRotate
+				humanoid.BreakJointsOnDeath = true
+				
+				-- Forzar reposicionamiento de partes
+				local rootPart = character:FindFirstChild("HumanoidRootPart")
+				if rootPart then
+					-- Juntar todas las partes cerca del root
+					for _, part in pairs(character:GetDescendants()) do
+						if part:IsA("BasePart") and part ~= rootPart then
+							part.CFrame = rootPart.CFrame
+							part.Velocity = Vector3.new(0, 0, 0)
+							part.RotVelocity = Vector3.new(0, 0, 0)
+						end
+					end
+				end
+			else
+				-- Si el personaje murió, restaurar la configuración por defecto
+				humanoid.BreakJointsOnDeath = true
+			end
+		end
+	end
 end
 
 -------------------------------------------------------------------------------------------------------------------------------
 
 -- Crear la GUI
-local gui = createGUI()
+local gui = Instance.new("ScreenGui")
+gui["Name"] = "CheatsGUI"
+if game["Run Service"]:IsStudio() then 
+	gui["Parent"] = localplayer:WaitForChild("PlayerGui") 
+else 
+	gui["Parent"] = gethui and gethui() or game:GetService("CoreGui") 
+end
+gui["ResetOnSpawn"] = false
 
--- Notificación de carga
-print("=== Cheats Menu Cargado ===")
-print("• Infinite Jump: Click para activar/desactivar")
-print("• Noclip: Atravesar paredes") 
-print("• ESP: Ver jugadores a través de paredes")
-print("• Ragdoll: Despiece del personaje")
-print("============================")
+-- Ajustar el tamaño para 4 botones
+local mainFrame = Instance.new("Frame")
+mainFrame["Size"] = UDim2.new(0, 200, 0, 180)
+mainFrame["Position"] = UDim2.new(0, 10, 0, 10)
+mainFrame["BackgroundColor3"] = Color3.fromRGB(30, 30, 30)
+mainFrame["BorderSizePixel"] = 0
+mainFrame["Parent"] = gui
+
+-- Hacer la ventana arrastrable
+task.spawn(function()
+	local dragToggle = nil
+	local dragSpeed = 0.25
+	local dragStart = nil
+	local startPos = nil
+
+	local function updateInput(input)
+		local delta = input.Position - dragStart
+		local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		game:GetService("TweenService"):Create(mainFrame, TweenInfo.new(dragSpeed), {Position = position}):Play()
+	end
+
+	mainFrame.InputBegan:Connect(function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then 
+			dragToggle = true
+			dragStart = input.Position
+			startPos = mainFrame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragToggle = false
+				end
+			end)
+		end
+	end)
+
+	uis.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			if dragToggle then
+				updateInput(input)
+			end
+		end
+	end)
+end)
+
+-- Barra de título
+local titleBar = Instance.new("Frame")
+titleBar["Size"] = UDim2.new(1, 0, 0, 25)
+titleBar["BackgroundColor3"] = Color3.fromRGB(50, 50, 50)
+titleBar["BorderSizePixel"] = 0
+titleBar["Parent"] = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel["Size"] = UDim2.new(1, 0, 1, 0)
+titleLabel["BackgroundTransparency"] = 1
+titleLabel["Text"] = "Cheats Menu"
+titleLabel["TextColor3"] = Color3.new(1, 1, 1)
+titleLabel["TextSize"] = 14
+titleLabel["Font"] = Enum.Font.RobotoMono
+titleLabel["Parent"] = titleBar
+
+-- Función para crear botones
+local function createButton(name, position, text)
+	local button = Instance.new("TextButton")
+	button["Name"] = name
+	button["Size"] = UDim2.new(0.8, 0, 0, 30)
+	button["Position"] = position
+	button["AnchorPoint"] = Vector2.new(0.5, 0)
+	button["BackgroundColor3"] = Color3.fromRGB(60, 60, 60)
+	button["Text"] = text
+	button["TextColor3"] = Color3.new(1, 1, 1)
+	button["TextSize"] = 14
+	button["Font"] = Enum.Font.RobotoMono
+	button["BorderSizePixel"] = 0
+	button["Parent"] = mainFrame
+	
+	return button
+end
+
+-- Crear los 4 botones
+local infiniteJumpButton = createButton("InfiniteJumpButton", UDim2.new(0.5, 0, 0, 30), "Infinite Jump: OFF")
+local noclipButton = createButton("NoclipButton", UDim2.new(0.5, 0, 0, 65), "Noclip: OFF")
+local espButton = createButton("ESPButton", UDim2.new(0.5, 0, 0, 100), "ESP: OFF")
+local ragdollButton = createButton("RagdollButton", UDim2.new(0.5, 0, 0, 135), "Ragdoll (Safe)")
+
+-- Conectar los botones a sus funciones
+infiniteJumpButton.MouseButton1Click:Connect(function()
+	clik()
+	toggleInfiniteJump()
+	infiniteJumpButton.Text = "Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
+end)
+
+noclipButton.MouseButton1Click:Connect(function()
+	clik()
+	toggleNoclip()
+	noclipButton.Text = "Noclip: " .. (noclipEnabled and "ON" or "OFF")
+end)
+
+espButton.MouseButton1Click:Connect(function()
+	clik()
+	toggleESP()
+	espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+end)
+
+ragdollButton.MouseButton1Click:Connect(function()
+	clik()
+	toggleRagdoll()
+end)
+
+-------------------------------------------------------------------------------------------------------------------------------
 
 -- Limpiar conexiones cuando el script se destruya
 gui.Destroying:Connect(function()
-    if getgenv().infiniteJumpConnection then
-        getgenv().infiniteJumpConnection:Disconnect()
-    end
-    if getgenv().noclipConnection then
-        getgenv().noclipConnection:Disconnect()
-    end
-    if espEnabled then
-        espEnabled = false
-        for player, highlight in pairs(espHighlights) do
-            if highlight and highlight.Parent then
-                highlight:Destroy()
-            end
-        end
-        espHighlights = {}
-    end
+	if getgenv().infiniteJumpConnection then
+		getgenv().infiniteJumpConnection:Disconnect()
+	end
+	if getgenv().noclipConnection then
+		getgenv().noclipConnection:Disconnect()
+	end
+	toggleESP() -- Esto apagará el ESP
 end)
+
+print("Cheats GUI loaded! Use the buttons to toggle features.")
